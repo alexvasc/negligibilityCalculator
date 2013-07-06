@@ -43,14 +43,14 @@ int deg(int x)
 }
 
 //returns the negligibility of n by table lookup
-unsigned long long int getNegFromTable(unsigned long long n)
+unsigned short getNegFromTable(unsigned long long n)
 { 
   FILE* negTable;
   negTable = fopen("negTable.bin", "rb");
-  unsigned long long ans;
+  unsigned short ans;
 
-  fseek(negTable, n*sizeof(unsigned long long), SEEK_SET);
-  fread(&ans,1,sizeof(unsigned long long), negTable);
+  fseek(negTable, n*sizeof(unsigned short), SEEK_SET);
+  fread(&ans,1,sizeof(unsigned short), negTable);
   fclose(negTable);
   return ans;
 }
@@ -159,8 +159,6 @@ void getBinaryFromTable(unsigned long long n, unsigned short numBits, bool* ans)
 //and an address in memory to which to write the result
 void getBinary(unsigned long long n,unsigned short numBits,bool* binaryRep)
 {
-
-  cout << "GETTING NEW BINARY" << endl;
   if (numBits <= MAX_POWER)
   {
     getBinaryFromTable(n,numBits,binaryRep);
@@ -174,12 +172,11 @@ void getBinary(unsigned long long n,unsigned short numBits,bool* binaryRep)
     unsigned short newNumBits = numBits;
     while (newNumBits > MAX_POWER)
     {
-      cout << "...IN WHILE LOOP" << endl;
-      n -= mypow(2,numBits-1);
+      n -= mypow(2,newNumBits-1);
       binaryRep[newNumBits-1] = true;
       newNumBits = getNumBitsNeeded(n);
     }
-    getBinaryFromTable(n, newNumBits, binaryRep+(numBits-newNumBits));
+    getBinaryFromTable(n, newNumBits, binaryRep);
     return;
   }
 
@@ -234,47 +231,67 @@ unsigned short getNeg(unsigned long long n)
 {
   unsigned long long original = n;
   bool* binaryRep;
+  unsigned short size = getNumBitsNeeded(n);
+  binaryRep = new bool[size];
 
-  int maxPower = 0;
-  while (n >= pow(2,maxPower))
-    maxPower++;
-
-  //  cout<<"evaluated maxPower of " << original  << " to be " << maxPower << endl;
-
-  binaryRep = new bool[maxPower];
-  for (int i=0;i<maxPower;i++)
-    binaryRep[i]=false;
-
-  for (int i=maxPower - 1;i>=0;i--)
-  {
-    if (n >= pow(2,i))
-    {
-      binaryRep[i] = true;
-      n -= pow(2,i);
-    }
-  }
-
-  /*
-  cout << "binary rep of " << original << " is: ";
-  for (int i=maxPower-1;i>=0;i--)
-    if (binaryRep[i])
-      cout << "1";
-    else
-      cout << "0";
-  cout << endl;
-  */       
+  getBinary(n,size,binaryRep);
 
   unsigned short rank=0;
   unsigned short sum=0;
-  for (int i=0;i<maxPower;i++)
+  for (unsigned short i=0;i<size;i++)
     if (binaryRep[i])
     {
       rank+=1;
       sum+=i+1;
     }
-  //  pair<int,int> ans(sum,rank);
   delete[] binaryRep;
   return rank+sum;
+}
+
+
+void makeNegLookup()
+{
+  time_t start;
+  double seconds;
+  int NUM_POWERS = 30; //will compute negligibility of all integers up to 2^(23)
+  int MAX_STACK = 7; //constant that depends on the architecture 10-17 seems optimal for most tested systems
+  ofstream log("neglog.txt");
+  
+  const unsigned long long size = mypow(2,MAX_STACK);
+  unsigned short a[size];
+  FILE* negTable;
+  negTable = fopen("negTable.bin", "wb");
+  time(&start);
+  unsigned long long buffsize = size*sizeof(unsigned short);
+  unsigned long long stop = mypow(2,NUM_POWERS-MAX_STACK);
+  unsigned long long check = mypow(2,NUM_POWERS-MAX_STACK-7);
+  unsigned short counter = 0;
+  for (unsigned long long j = 0; j < stop; ++j)
+  {
+    unsigned long long stopplace = (j+1)*size;
+    unsigned long long clumpsize = j*size;
+    if (j % check == 0)
+    {
+      log << "Done with " << counter << "/126" << endl;
+      counter++;
+    }
+
+    //Some calculations to fill a[]
+    for (unsigned long long i=j*size;i<stopplace;i++)
+      a[i-clumpsize] = getNeg(i);
+
+    fwrite(a, 1, buffsize, negTable);
+  }
+  time_t end;
+  time(&end);
+  seconds = difftime(end, start);
+  cout << "time: " << seconds << endl;
+  fclose(negTable);
+
+  log << "TOOK " << seconds << " seconds" << endl;
+  log.close();
+
+
 }
 
 int main()
@@ -323,39 +340,43 @@ int main()
 
 
   //  makeBinaryLookup();
+  cout << "launching neg lookup generation " <<endl;
+  makeNegLookup();
 
-
+  /*
   // Testing the conversion from decimal to binary...
   unsigned long long thing1 = mypow(2,14)+mypow(2,12)+mypow(2,10)+mypow(2,8);
   unsigned long long thing2 = mypow(2,50)+mypow(2,26)+mypow(2,10)+mypow(2,15);
   unsigned long long thing3 = 102859123841;
-  unsigned short size1 = getNumBitsNeeded(thing1);
-  unsigned short size2 = getNumBitsNeeded(thing2);
-  unsigned short size3 = getNumBitsNeeded(thing3);
+  unsigned short size1 = getNumBitsNeeded(thing1); cout << "size1: " << size1 << endl;
+  unsigned short size2 = getNumBitsNeeded(thing2); cout << "size2: " << size2 << endl;
+  unsigned short size3 = getNumBitsNeeded(thing3); cout << "size3: " << size3 << endl;
   bool* bin1; bin1 = new bool[size1]; getBinary(thing1,size1,bin1);
   bool* bin2; bin2 = new bool[size2]; getBinary(thing2,size2,bin2);
-  for (int i=size1;i>=0;i--)
+  bool* bin3; bin3 = new bool[size3]; getBinary(thing3,size3,bin3);
+
+  for (int i=size1-1;i>=0;i--)
     if (bin1[i])
       cout << "1";
     else 
       cout << "0";
   cout << endl;
-  for (int i=size2;i>=0;i--)
+
+  for (int i=size2-1;i>=0;i--)
     if (bin2[i])
       cout << "1";
     else 
       cout << "0";
   cout << endl;
 
-
-  bool* bin3; bin3 = new bool[size3]; getBinary(thing3,size3,bin3);
-  
-  for (int i=size3;i>=0;i--)
+  for (int i=size3-1;i>=0;i--)
     if (bin3[i])
       cout << "1";
     else 
       cout << "0";
   cout << endl;
+
+  */
 
   /*
   cout << "mypow(2,30) = " << mypow(2,30) << endl;
